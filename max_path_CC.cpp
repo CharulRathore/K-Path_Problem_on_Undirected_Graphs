@@ -6,6 +6,7 @@
 #include "graph.h"
 #include <cmath>
 #include <chrono>
+#include "threads.h"
 
 using namespace std;
 using namespace std::chrono;
@@ -20,6 +21,19 @@ typedef struct triplet {
 } scp_triplet;
 
 typedef unordered_map<int, unordered_map<int, vector<scp_triplet>>> VTRIPLETS;
+
+class cc {
+private:
+    GraphLib g;
+    int k;
+    aMutex mutex;
+public: 
+vector<int> results_from_all_threads;
+
+cc (GraphLib & glib, int kpath) {
+    g = glib;
+    k = kpath;
+}
 
 void initialize_vertex_triplets(VTRIPLETS & vertex_triplets, vector<int> & tvs, VCOLOR & vcolor) {
     for (int i=0; i < (int)tvs.size(); i++) {
@@ -131,34 +145,73 @@ int maxColoredKPath(GRAPH & graph, VCOLOR & vcolor, int k, vector<int> & tvs) {
     return pmax;
 }
 
-int main() {
-    int k = 5;
-    string graphInputFile = "./graph_dataset/graph_with_7V_9E.txt";
-
-    GraphLib g;
-    if (!g.createGraph(graphInputFile)) {
-        cout << "unable to create graph" << endl;
-        return 0;
-    }
+void work(int thrId) {
+    cout << "running on thread id: " << thrId <<  endl;    
     GRAPH graph = g.getGraph(); // got an undirected graph
 
     int globalMax = -999; 
+    vector<int> tvs = g.getVertices(); 
+
     //time START
     auto start = high_resolution_clock::now();
-    for (unsigned long long int i=0; i < 10 * exp(k); i++) {
-
+    for (unsigned long long int i=0; i < (10 * exp(k))/g.getNumThreads(); i++) {
+        // auto start = high_resolution_clock::now();
         VCOLOR vcolor;
-        g.colorGraph(vcolor, k);
-        vector<int> tvs = g.getVertices(); 
+        g.colorGraph(vcolor, k, thrId);
 
         globalMax = max(maxColoredKPath(graph,vcolor,k,tvs), globalMax);
-        cout << i << endl;
+        // cout << i << endl;
+
+        // auto stop = high_resolution_clock::now();
+        // auto duration = duration_cast<milliseconds>(stop - start);
+        // cout << "Time taken by function: " << duration.count() << "milliseconds" << endl;
+   
     }
     //time STOP
     auto stop = high_resolution_clock::now();
     auto duration = duration_cast<milliseconds>(stop - start);
- 
     cout << "Time taken by function: " << duration.count() << "milliseconds" << endl;
+    
+    /*mutex.lock();
+    results_from_all_threads.push_back(globalMax);
+    mutex.unlock();*/
+
     cout << "GlobalMax: " << globalMax << endl;
+}
+
+};
+
+int main() {
+    // program inputs 
+    int k = 8;
+    string graphInputFile = "./graph_dataset/graph_with_50V_150E.txt";
+    int numThreads = 4;
+
+    cout << "Input file: " << graphInputFile << endl;
+    cout << "K: " << k << endl;
+    cout << "numThreads: " << numThreads << endl;
+    
+    // ------------------------------------------------------------------
+    vector<cc*> maxPathCC_jobs;
+    GraphLib g;
+    g.setNumThreads(numThreads);
+    if (!g.createGraph(graphInputFile)) {
+        cout << "unable to create graph" << endl;
+        return 0;
+    }
+    g.setBitId();
+    
+    for (int i=0; i<numThreads; i++) {
+        cc * job = new cc(g, k);
+        maxPathCC_jobs.push_back(job);
+    }
+    
+    threadManager<cc> mgr;
+    mgr.start(numThreads);
+    mgr.init(&maxPathCC_jobs);
+    mgr.wait();
+    mgr.exit();
+
+
     return 0;
 }
