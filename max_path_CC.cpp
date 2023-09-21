@@ -6,7 +6,7 @@
 #include "graph.h"
 #include <cmath>
 #include <chrono>
-#include "threads.h"
+#include "newthreads.h"
 
 using namespace std;
 using namespace std::chrono;
